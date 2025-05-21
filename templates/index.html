@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worldometers Live Feed</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding: 20px;
+            overflow: hidden; /* Hide scrollbars as per script.js */
+        }
+        /* These regular counter cards are generally hidden or not used in full-screen mode */
+        .counter-card {
+            display: none; /* Hide regular cards by default as we're using full-screen rotation */
+        }
+        .timestamp {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            color: #6c757d;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #212529;
+        }
+
+        /* Styles for the new overlay from script.js */
+        #global-black-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgb(0,0,0);
+            z-index: 9999998;
+            display: none; /* Hidden by default */
+            transition: opacity 0.5s ease;
+            opacity: 1;
+        }
+        .overlay-flash { /* Generic style for individual counter flashes (NOT for rotation) */
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 9999999; /* Higher than full-screen cards */
+            display: none;
+            transition: opacity 0.2s ease-out; /* Faster fade out for flash */
+            opacity: 0;
+        }
+        #flash-text-overlay { /* Specific text overlay for the flash effect */
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 30px;
+            font-weight: bold;
+            text-align: center;
+            z-index: 10000000; /* Highest z-index */
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            width: 80%;
+            display: none; /* Hidden by default */
+        }
+
+        /* Style for active counter (full screen) */
+        .full-screen-card {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #282c34; /* Dark background */
+            color: white;
+            z-index: 999;
+            transition: opacity 1s ease-in-out;
+            opacity: 0; /* Hidden by default */
+        }
+        .full-screen-card.active {
+            opacity: 1;
+        }
+        .full-screen-card .counter-value {
+            font-size: 8rem; /* Larger font for full screen value */
+            color: #61dafb; /* Example color */
+        }
+        .full-screen-card .counter-title {
+            font-size: 3rem; /* Larger font for full screen title */
+            color: #a0a0a0;
+            margin-bottom: 20px; /* Space between title and value */
+            position: absolute; /* Position relative to viewport */
+            top: 20%; /* Adjust as needed */
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        
+        /* Hide elements not needed during full-screen rotation */
+        h1.hidden, .timestamp.hidden, #counter-container.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="global-black-overlay"></div>
+    <div id="flash-text-overlay"></div>
+
+    <div class="container">
+        <h1 id="main-title">Worldometers Live Population Feed</h1>
+        <div class="timestamp" id="timestamp">Last Updated: Waiting for data...</div>
+        
+        <div class="row" id="counter-container">
+            </div>
+    </div>
+
+    <div id="full-screen-display">
+        </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const eventSource = new EventSource('/stream');
+            let counterContainer = document.getElementById('counter-container'); // Still needed for initialization but will be hidden
+            let timestampElement = document.getElementById('timestamp');
+            let mainTitle = document.getElementById('main-title');
+            let previousData = {};
+            
+            // --- Elements for Flash Overlay ---
+            const globalBlackOverlay = document.getElementById('global-black-overlay');
+            const flashTextOverlay = document.getElementById('flash-text-overlay'); // Renamed for clarity
+            const flashOverlays = {}; // To store individual counter flash elements
+            
+            // Function to create a new flash overlay for a counter (if not already existing)
+            function createFlashOverlay(counterName, color) {
+                let overlay = flashOverlays[counterName];
+                if (!overlay) {
+                    overlay = document.createElement('div');
+                    overlay.className = 'overlay-flash'; // Use the flash class
+                    overlay.style.backgroundColor = color;
+                    document.body.appendChild(overlay);
+                    flashOverlays[counterName] = overlay;
+                } else {
+                    overlay.style.backgroundColor = color; // Update color if exists
+                }
+                return overlay;
+            }
+
+            // Function to show the flash effect with specified color and value
+            function showFlashFeedback(counterName, color, value) {
+                let overlay = createFlashOverlay(counterName, color);
+
+                // Show the specific counter flash overlay and text overlay
+                overlay.style.display = 'block';
+                overlay.style.opacity = '0.8';
+                flashTextOverlay.style.display = 'block';
+                flashTextOverlay.innerHTML = counterName + '<br>' + value;
+
+                // Hide after a moment
+                setTimeout(() => {
+                    overlay.style.opacity = '0';
+                    flashTextOverlay.style.opacity = '0'; // Fade out flash text overlay
+                    setTimeout(() => {
+                        overlay.style.display = 'none';
+                        flashTextOverlay.style.display = 'none'; // Hide flash text overlay after fade
+                        flashTextOverlay.style.opacity = '1'; // Reset flash text overlay opacity for next use
+                    }, 200); // Match transition duration (shorter for flash)
+                }, 300); // Display duration for flash
+            }
+            // --- End Elements for Flash Overlay ---
+
+            // --- Logic for Counter Rotation ---
+            let allCounterNames = []; // To store the order of counters
+            let currentCounterIndex = 0;
+            const rotationIntervalTime = 10000; // 10 seconds for each counter
+            let rotationTimer;
+            let currentFullData = {}; // To store the latest full data received from SSE
+
+            const fullScreenDisplay = document.getElementById('full-screen-display');
+
+            // Function to create a full-screen card for a given counter
+            function createFullScreenCard(counterName, value) {
+                const existingCard = document.getElementById(`full-screen-card-${counterName.replace(/\s+/g, '-').toLowerCase()}`);
+                if (existingCard) {
+                    // Update existing card if it's already there
+                    existingCard.querySelector('.counter-value').textContent = value;
+                    return existingCard;
+                }
+
+                const card = document.createElement('div');
+                card.className = 'full-screen-card';
+                card.id = `full-screen-card-${counterName.replace(/\s+/g, '-').toLowerCase()}`;
+                card.innerHTML = `
+                    <div class="counter-title">${counterName}</div>
+                    <div class="counter-value">${value}</div>
+                `;
+                fullScreenDisplay.appendChild(card);
+                return card;
+            }
+
+            // Function to show the active counter in full screen
+            function showActiveCounter() {
+                // Hide all full-screen cards first
+                document.querySelectorAll('.full-screen-card').forEach(card => {
+                    card.classList.remove('active');
+                    setTimeout(() => { // Hide the card after its transition for better performance
+                        card.style.display = 'none';
+                    }, 1000); // Match transition duration
+                });
+
+                // Get the current counter name
+                const activeCounterName = allCounterNames[currentCounterIndex];
+                if (!activeCounterName || !currentFullData[activeCounterName]) {
+                    console.warn("No data for current active counter:", activeCounterName);
+                    // If no data, try next counter or wait for data
+                    currentCounterIndex = (currentCounterIndex + 1) % allCounterNames.length;
+                    setTimeout(showActiveCounter, 100); // Try again soon
+                    return;
+                }
+
+                // Hide the main title, timestamp, and regular counter container
+                mainTitle.classList.add('hidden');
+                timestampElement.classList.add('hidden');
+                counterContainer.classList.add('hidden');
+
+
+                // Create/Update and show the active full-screen card
+                const activeCard = createFullScreenCard(activeCounterName, currentFullData[activeCounterName]);
+                activeCard.style.display = 'flex'; // Make sure it's visible before activating
+                setTimeout(() => { // Add active class after display to trigger transition
+                    activeCard.classList.add('active');
+                }, 50);
+
+                // Re-start the rotation timer
+                if (rotationTimer) {
+                    clearInterval(rotationTimer);
+                }
+                rotationTimer = setInterval(() => {
+                    currentCounterIndex = (currentCounterIndex + 1) % allCounterNames.length;
+                    showActiveCounter();
+                }, rotationIntervalTime);
+            }
+
+            // --- End Logic for Counter Rotation ---
+
+            // Initialize the counter cards and set up the rotation
+            function initializeCounters(data) {
+                counterContainer.innerHTML = ''; // Clear initial loading message
+                allCounterNames = []; // Clear previous names
+                for (const [key, value] of Object.entries(data)) {
+                    if (key === 'timestamp' || key === 'message') continue;
+                    
+                    allCounterNames.push(key); // Store order of counter names
+
+                    // We still create these, but they are hidden by CSS display:none
+                    let cardHtml = `
+                        <div class="col-md-6 col-lg-4">
+                            <div class="counter-card" id="card-${key.replace(/\s+/g, '-').toLowerCase()}">
+                                <div class="counter-value text-center" id="value-${key.replace(/\s+/g, '-').toLowerCase()}">${value}</div>
+                                <div class="counter-title text-center">${key}</div>
+                            </div>
+                        </div>
+                    `;
+                    counterContainer.innerHTML += cardHtml;
+                }
+                previousData = {...data};
+                currentFullData = {...data}; // Store initial full data
+                globalBlackOverlay.style.display = 'none'; // Hide initial black overlay once data loads
+
+                // Start the rotation once counters are initialized
+                if (allCounterNames.length > 0) {
+                    showActiveCounter();
+                } else {
+                    console.warn("No counter names found in initial data. Check Flask app output.");
+                }
+            }
+            
+            // Update counter values (both currentFullData and conditionally trigger flash)
+            function updateCounters(data) {
+                // Update the current full data storage with the latest interpolated values
+                currentFullData = {...data};
+
+                // Define colors for specific counters (for the flash effect)
+                const counterColors = {
+                    "Current World Population": "#eb7781",
+                    "Births this year": "#d67821",
+                    "Deaths this year": "#55abfc",
+                    "Births today": "#d67821", 
+                    "Deaths today": "#55abfc", 
+                    "Net population growth this year": "#0d6efd", 
+                    "Net population growth today": "#0d6efd" 
+                };
+
+                const activeCounterName = allCounterNames[currentCounterIndex];
+
+                for (const [key, value] of Object.entries(data)) {
+                    if (key === 'timestamp' || key === 'message') {
+                        if (key === 'timestamp') {
+                            // Update timestamp (this might be hidden in full-screen mode)
+                            timestampElement.textContent = `Last Updated: ${value}`;
+                        }
+                        continue;
+                    }
+                    
+                    // Check if the value for this counter has changed
+                    if (previousData[key] !== value) {
+                        // If this counter is currently active (displayed full-screen)
+                        if (key === activeCounterName) {
+                            // Update the value in the active full-screen card
+                            const fullScreenElement = document.getElementById(`full-screen-card-${key.replace(/\s+/g, '-').toLowerCase()}`);
+                            if (fullScreenElement) {
+                                fullScreenElement.querySelector('.counter-value').textContent = value;
+                            }
+
+                            // Trigger the visual flash feedback ONLY for the active counter
+                            if (counterColors[key]) {
+                                showFlashFeedback(key, counterColors[key], value);
+                            }
+                        }
+                    }
+                }
+                previousData = {...data}; // Update previous data for the next comparison
+            }
+            
+            // Handle incoming events
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+                // Initialize counters if this is the first data we received
+                if (Object.keys(previousData).length === 0) {
+                    initializeCounters(data);
+                } else {
+                    updateCounters(data);
+                }
+            };
+            
+            // Handle errors
+            eventSource.onerror = function() {
+                console.error('EventSource failed. Trying to reconnect...');
+                eventSource.close();
+                setTimeout(() => {
+                    location.reload();
+                }, 5000);
+            };
+
+            // Initially show the global black overlay
+            globalBlackOverlay.style.display = 'block';
+        });
+    </script>
+</body>
+</html>
