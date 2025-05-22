@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worldometers Live Feed</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding: 20px;
+        }
+        .counter-card {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+            position: relative;
+        }
+        .counter-card:hover {
+            transform: translateY(-5px);
+        }
+        .counter-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+        .counter-title {
+            font-size: 1.2rem;
+            color: #6c757d;
+        }
+        .counter-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #28a745;
+        }
+        .counter-indicator.estimated {
+            background-color: #ffc107;
+        }
+        .update-pulse {
+            animation: pulse 1s;
+        }
+        @keyframes pulse {
+            0% {
+                background-color: rgba(13, 110, 253, 0.1);
+            }
+            100% {
+                background-color: rgba(255, 255, 255, 1);
+            }
+        }
+        .timestamp {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            color: #6c757d;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #212529;
+        }
+        .indicator-label {
+            position: absolute;
+            top: 6px;
+            right: 25px;
+            font-size: 0.7rem;
+            color: #28a745;
+        }
+        .indicator-label.estimated {
+            color: #ffc107;
+        }
+        .data-source {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        #loading-overlay {
+            display: none; /* No longer needed since we show data immediately */
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.9);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading overlay (hidden now since we show data immediately) -->
+    <div id="loading-overlay">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <div>Retrieving data from Worldometers...</div>
+    </div>
+
+    <div class="container">
+        <h1>Worldometers Live Population Feed</h1>
+        <div class="timestamp" id="timestamp">Last Updated: Initializing...</div>
+        
+        <div class="row" id="counter-container">
+            <!-- Counters will be inserted here by JavaScript -->
+        </div>
+        
+        <div class="data-source">
+            Data from worldometers.info | Updates in real-time
+            <div id="update-rate">Update rate: Calculating...</div>
+            <div id="data-status">Status: Initializing...</div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Connect to server-sent events
+            const eventSource = new EventSource('/stream');
+            let counterContainer = document.getElementById('counter-container');
+            let timestampElement = document.getElementById('timestamp');
+            let updateRateElement = document.getElementById('update-rate');
+            let dataStatusElement = document.getElementById('data-status');
+            let previousData = {};
+            let updateCount = 0;
+            let startTime = Date.now();
+            let lastValue = {};
+            
+            // Initialize the counter cards
+            function initializeCounters(data) {
+                counterContainer.innerHTML = '';
+                for (const [key, value] of Object.entries(data)) {
+                    if (key === 'timestamp' || key.endsWith('_int') || key === 'base_timestamp' || key === 'data_source') continue;
+                    
+                    const isEstimated = data.data_source === 'estimated';
+                    const indicatorClass = isEstimated ? 'estimated' : '';
+                    const indicatorText = isEstimated ? 'EST' : 'LIVE';
+                    
+                    let cardHtml = `
+                        <div class="col-md-6 col-lg-4">
+                            <div class="counter-card" id="card-${key.replace(/\s+/g, '-').toLowerCase()}">
+                                <div class="counter-indicator ${indicatorClass}" id="indicator-${key.replace(/\s+/g, '-').toLowerCase()}"></div>
+                                <div class="indicator-label ${indicatorClass}" id="indicator-label-${key.replace(/\s+/g, '-').toLowerCase()}">${indicatorText}</div>
+                                <div class="counter-value text-center" id="value-${key.replace(/\s+/g, '-').toLowerCase()}">${value}</div>
+                                <div class="counter-title text-center">${key}</div>
+                            </div>
+                        </div>
+                    `;
+                    counterContainer.innerHTML += cardHtml;
+                    lastValue[key] = value;
+                }
+                previousData = {...data};
+                
+                // Update data status
+                updateDataStatus(data.data_source);
+            }
+            
+            function updateDataStatus(dataSource) {
+                if (dataSource === 'real') {
+                    dataStatusElement.textContent = 'Status: Using real data from Worldometers';
+                    dataStatusElement.style.color = '#28a745';
+                } else if (dataSource === 'estimated') {
+                    dataStatusElement.textContent = 'Status: Using estimated data (real data syncing in background)';
+                    dataStatusElement.style.color = '#ffc107';
+                } else {
+                    dataStatusElement.textContent = 'Status: Initializing...';
+                    dataStatusElement.style.color = '#6c757d';
+                }
+            }
+            
+            // Update counter values
+            function updateCounters(data) {
+                updateCount++;
+                
+                // Calculate and display update rate every second
+                if (Date.now() - startTime > 1000) {
+                    const rate = updateCount / ((Date.now() - startTime) / 1000);
+                    updateRateElement.textContent = `Update rate: ${rate.toFixed(1)} updates/second`;
+                    updateCount = 0;
+                    startTime = Date.now();
+                }
+                
+                // Update data source status if changed
+                if (data.data_source !== previousData.data_source) {
+                    updateDataStatus(data.data_source);
+                    
+                    // Update all indicators if data source changed
+                    const isEstimated = data.data_source === 'estimated';
+                    for (const key of Object.keys(data)) {
+                        if (key === 'timestamp' || key.endsWith('_int') || key === 'base_timestamp' || key === 'data_source') continue;
+                        
+                        const indicatorId = `indicator-${key.replace(/\s+/g, '-').toLowerCase()}`;
+                        const labelId = `indicator-label-${key.replace(/\s+/g, '-').toLowerCase()}`;
+                        const indicator = document.getElementById(indicatorId);
+                        const label = document.getElementById(labelId);
+                        
+                        if (indicator && label) {
+                            if (isEstimated) {
+                                indicator.classList.add('estimated');
+                                label.classList.add('estimated');
+                                label.textContent = 'EST';
+                            } else {
+                                indicator.classList.remove('estimated');
+                                label.classList.remove('estimated');
+                                label.textContent = 'LIVE';
+                            }
+                        }
+                    }
+                }
+                
+                for (const [key, value] of Object.entries(data)) {
+                    if (key === 'timestamp') {
+                        timestampElement.textContent = `Last Updated: ${value}`;
+                        continue;
+                    }
+                    
+                    if (key.endsWith('_int') || key === 'base_timestamp' || key === 'data_source') continue;
+                    
+                    let elementId = `value-${key.replace(/\s+/g, '-').toLowerCase()}`;
+                    let cardId = `card-${key.replace(/\s+/g, '-').toLowerCase()}`;
+                    let element = document.getElementById(elementId);
+                    let card = document.getElementById(cardId);
+                    
+                    if (element && value !== lastValue[key]) {
+                        element.textContent = value;
+                        lastValue[key] = value;
+                        
+                        // Skip animation for every update to improve performance
+                        // Only animate when the first digit changes
+                        if (previousData[key] && 
+                            value.split(',')[0] !== previousData[key].split(',')[0]) {
+                            card.classList.remove('update-pulse');
+                            void card.offsetWidth; // Trigger reflow to restart animation
+                            card.classList.add('update-pulse');
+                        }
+                    }
+                }
+                previousData = {...data};
+            }
+            
+            // Handle incoming events
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+                // Hide loading overlay immediately after we get the first data
+                document.getElementById('loading-overlay').style.display = 'none';
+                
+                // Initialize counters if this is the first data we received
+                if (Object.keys(previousData).length === 0) {
+                    initializeCounters(data);
+                } else {
+                    updateCounters(data);
+                }
+            };
+            
+            // Handle errors
+            eventSource.onerror = function() {
+                console.error('EventSource failed. Trying to reconnect...');
+                eventSource.close();
+                setTimeout(() => {
+                    location.reload();
+                }, 5000);
+            };
+        });
+    </script>
+</body>
+</html>

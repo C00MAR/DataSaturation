@@ -3,353 +3,443 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Worldometers Live Feed</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Worldometers Live Display</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            background-color: #f8f9fa;
-            padding: 20px;
-            overflow: hidden; /* Hide scrollbars as per script.js */
-        }
-        /* These regular counter cards are generally hidden or not used in full-screen mode */
-        .counter-card {
-            display: none; /* Hide regular cards by default as we're using full-screen rotation */
-        }
-        .timestamp {
-            text-align: center;
-            margin-bottom: 20px;
-            font-size: 1.2rem;
-            color: #6c757d;
-        }
-        h1 {
-            text-align: center;
-            margin-bottom: 30px;
-            color: #212529;
-        }
-
-        /* Styles for the new overlay from script.js */
-        #global-black-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background-color: rgb(0,0,0);
-            z-index: 9999998;
-            display: none; /* Hidden by default */
-            transition: opacity 0.5s ease;
-            opacity: 1;
-        }
-        .overlay-flash { /* Generic style for individual counter flashes (NOT for rotation) */
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 9999999; /* Higher than full-screen cards */
-            display: none;
-            transition: opacity 0.2s ease-out; /* Faster fade out for flash */
-            opacity: 0;
-        }
-        #flash-text-overlay { /* Specific text overlay for the flash effect */
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            background-color: black;
             color: white;
-            font-size: 30px;
-            font-weight: bold;
-            text-align: center;
-            z-index: 10000000; /* Highest z-index */
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-            width: 80%;
-            display: none; /* Hidden by default */
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
-        /* Style for active counter (full screen) */
-        .full-screen-card {
-            position: fixed;
-            top: 0;
-            left: 0;
+        .container {
             width: 100vw;
             height: 100vh;
+            display: grid;
+            gap: 2px;
+        }
+
+        .stream-box {
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            background-color: #282c34; /* Dark background */
+            border: 2px solid white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stream-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
             color: white;
+        }
+
+        .stream-value {
+            font-size: 3rem;
+            font-weight: bold;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            color: white;
+        }
+
+        .stream-flash {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            opacity: 0;
+            transition: none;
+        }
+
+        /* Grid layouts */
+        .single {
+            grid-template-columns: 1fr;
+            grid-template-rows: 1fr;
+        }
+
+        .side-by-side {
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr;
+        }
+
+        .mosaic-2x2 {
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+        }
+
+        .mosaic-3x3 {
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr 1fr;
+        }
+
+        .debug-info {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            font-size: 12px;
+            border-radius: 5px;
             z-index: 999;
-            transition: opacity 1s ease-in-out;
-            opacity: 0; /* Hidden by default */
-        }
-        .full-screen-card.active {
-            opacity: 1;
-        }
-        .full-screen-card .counter-value {
-            font-size: 8rem; /* Larger font for full screen value */
-            color: #61dafb; /* Example color */
-        }
-        .full-screen-card .counter-title {
-            font-size: 3rem; /* Larger font for full screen title */
-            color: #a0a0a0;
-            margin-bottom: 20px; /* Space between title and value */
-            position: absolute; /* Position relative to viewport */
-            top: 20%; /* Adjust as needed */
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        
-        /* Hide elements not needed during full-screen rotation */
-        h1.hidden, .timestamp.hidden, #counter-container.hidden {
-            display: none;
         }
     </style>
 </head>
 <body>
-    <div id="global-black-overlay"></div>
-    <div id="flash-text-overlay"></div>
-
-    <div class="container">
-        <h1 id="main-title">Worldometers Live Population Feed</h1>
-        <div class="timestamp" id="timestamp">Last Updated: Waiting for data...</div>
-        
-        <div class="row" id="counter-container">
-            </div>
-    </div>
-
-    <div id="full-screen-display">
-        </div>
-
+    <div class="container" id="container"></div>
+    <!-- <div class="debug-info" id="debugInfo">Loading...</div> -->
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const eventSource = new EventSource('/stream');
-            let counterContainer = document.getElementById('counter-container'); // Still needed for initialization but will be hidden
-            let timestampElement = document.getElementById('timestamp');
-            let mainTitle = document.getElementById('main-title');
-            let previousData = {};
-            
-            // --- Elements for Flash Overlay ---
-            const globalBlackOverlay = document.getElementById('global-black-overlay');
-            const flashTextOverlay = document.getElementById('flash-text-overlay'); // Renamed for clarity
-            const flashOverlays = {}; // To store individual counter flash elements
-            
-            // Function to create a new flash overlay for a counter (if not already existing)
-            function createFlashOverlay(counterName, color) {
-                let overlay = flashOverlays[counterName];
-                if (!overlay) {
-                    overlay = document.createElement('div');
-                    overlay.className = 'overlay-flash'; // Use the flash class
-                    overlay.style.backgroundColor = color;
-                    document.body.appendChild(overlay);
-                    flashOverlays[counterName] = overlay;
-                } else {
-                    overlay.style.backgroundColor = color; // Update color if exists
-                }
-                return overlay;
+        class WorldometersDisplay {
+            constructor() {
+                this.streams = [
+                    { 
+                        key: 'Current World Population', 
+                        name: 'POPULATION', 
+                        color: '#FF0000',
+                        audio: '/static/audio/population.mp3',
+                        value: 0,
+                        lastValue: 0
+                    },
+                    { 
+                        key: 'Births this year', 
+                        name: 'BIRTHS', 
+                        color: '#00FF00',
+                        audio: '/static/audio/births.mp3',
+                        value: 0,
+                        lastValue: 0
+                    },
+                    { 
+                        key: 'Deaths this year', 
+                        name: 'DEATHS', 
+                        color: '#0000FF',
+                        audio: '/static/audio/deaths.mp3',
+                        value: 0,
+                        lastValue: 0
+                    },
+                    { 
+                        key: 'Car Production this year', 
+                        name: 'CARS', 
+                        color: '#FFFF00',
+                        audio: '/static/audio/cars.mp3',
+                        value: 0,
+                        lastValue: 0
+                    },
+                    { 
+                        key: 'Cellular phones sold today', 
+                        name: 'PHONES', 
+                        color: '#FF00FF',
+                        audio: '/static/audio/phones.mp3',
+                        value: 0,
+                        lastValue: 0
+                    },
+                    { 
+                        key: 'Google searches today', 
+                        name: 'SEARCHES', 
+                        color: '#00FFFF',
+                        audio: '/static/audio/searches.mp3',
+                        value: 0,
+                        lastValue: 0
+                    },
+                    { 
+                        key: 'CO2 emissions this year (tons)', 
+                        name: 'CO2', 
+                        color: '#FFA500',
+                        audio: '/static/audio/co2.mp3',
+                        value: 0,
+                        lastValue: 0
+                    },
+                    { 
+                        key: 'Water used this year (million L)', 
+                        name: 'WATER', 
+                        color: '#800080',
+                        audio: '/static/audio/water.mp3',
+                        value: 0,
+                        lastValue: 0
+                    },
+                    { 
+                        key: 'Cigarettes smoked today', 
+                        name: 'CIGARETTES', 
+                        color: '#A52A2A',
+                        audio: '/static/audio/cigarettes.mp3',
+                        value: 0,
+                        lastValue: 0
+                    }
+                ];
+
+                this.sequence = [
+                    { type: 'single', streams: [0], duration: 10000 },
+                    { type: 'single', streams: [1], duration: 10000 },
+                    { type: 'single', streams: [2], duration: 10000 },
+                    { type: 'single', streams: [3], duration: 10000 },
+                    { type: 'single', streams: [4], duration: 10000 },
+                    { type: 'single', streams: [5], duration: 7000 },
+                    { type: 'single', streams: [6], duration: 7000 },
+                    { type: 'single', streams: [7], duration: 7000 },
+                    { type: 'single', streams: [8], duration: 5000 },
+                    { type: 'side-by-side', streams: [0, 1], duration: 7000 },
+                    { type: 'side-by-side', streams: [2, 3], duration: 7000 },
+                    { type: 'mosaic-2x2', streams: [0, 1, 2, 3], duration: 7000 },
+                    { type: 'mosaic-2x2', streams: [4, 5, 6, 7], duration: 7000 },
+                    { type: 'mosaic-3x3', streams: [0, 1, 2, 3, 4, 5, 6, 7, 8], duration: 10000 },
+                    { type: 'mosaic-3x3-random', streams: [0, 1, 2, 3, 4, 5, 6, 7, 8], duration: 10000 },
+                    { type: 'random-cycle', streams: [0, 1, 2, 3, 4, 5, 6, 7, 8], duration: 20000 }
+                ];
+
+                this.currentSequenceIndex = 0;
+                this.sequenceStartTime = Date.now();
+                this.container = document.getElementById('container');
+                this.debugInfo = document.getElementById('debugInfo');
+                
+                this.audioCache = {};
+                this.loadAudio();
+                this.setupEventSource();
+                this.startSequence();
             }
 
-            // Function to show the flash effect with specified color and value
-            function showFlashFeedback(counterName, color, value) {
-                let overlay = createFlashOverlay(counterName, color);
-
-                // Show the specific counter flash overlay and text overlay
-                overlay.style.display = 'block';
-                overlay.style.opacity = '0.8';
-                flashTextOverlay.style.display = 'block';
-                flashTextOverlay.innerHTML = counterName + '<br>' + value;
-
-                // Hide after a moment
-                setTimeout(() => {
-                    overlay.style.opacity = '0';
-                    flashTextOverlay.style.opacity = '0'; // Fade out flash text overlay
-                    setTimeout(() => {
-                        overlay.style.display = 'none';
-                        flashTextOverlay.style.display = 'none'; // Hide flash text overlay after fade
-                        flashTextOverlay.style.opacity = '1'; // Reset flash text overlay opacity for next use
-                    }, 200); // Match transition duration (shorter for flash)
-                }, 300); // Display duration for flash
-            }
-            // --- End Elements for Flash Overlay ---
-
-            // --- Logic for Counter Rotation ---
-            let allCounterNames = []; // To store the order of counters
-            let currentCounterIndex = 0;
-            const rotationIntervalTime = 10000; // 10 seconds for each counter
-            let rotationTimer;
-            let currentFullData = {}; // To store the latest full data received from SSE
-
-            const fullScreenDisplay = document.getElementById('full-screen-display');
-
-            // Function to create a full-screen card for a given counter
-            function createFullScreenCard(counterName, value) {
-                const existingCard = document.getElementById(`full-screen-card-${counterName.replace(/\s+/g, '-').toLowerCase()}`);
-                if (existingCard) {
-                    // Update existing card if it's already there
-                    existingCard.querySelector('.counter-value').textContent = value;
-                    return existingCard;
-                }
-
-                const card = document.createElement('div');
-                card.className = 'full-screen-card';
-                card.id = `full-screen-card-${counterName.replace(/\s+/g, '-').toLowerCase()}`;
-                card.innerHTML = `
-                    <div class="counter-title">${counterName}</div>
-                    <div class="counter-value">${value}</div>
-                `;
-                fullScreenDisplay.appendChild(card);
-                return card;
-            }
-
-            // Function to show the active counter in full screen
-            function showActiveCounter() {
-                // Hide all full-screen cards first
-                document.querySelectorAll('.full-screen-card').forEach(card => {
-                    card.classList.remove('active');
-                    setTimeout(() => { // Hide the card after its transition for better performance
-                        card.style.display = 'none';
-                    }, 1000); // Match transition duration
+            loadAudio() {
+                this.streams.forEach(stream => {
+                    this.audioCache[stream.audio] = new Audio(stream.audio);
+                    this.audioCache[stream.audio].volume = 0.5;
+                    this.audioCache[stream.audio].preload = 'auto';
                 });
-
-                // Get the current counter name
-                const activeCounterName = allCounterNames[currentCounterIndex];
-                if (!activeCounterName || !currentFullData[activeCounterName]) {
-                    console.warn("No data for current active counter:", activeCounterName);
-                    // If no data, try next counter or wait for data
-                    currentCounterIndex = (currentCounterIndex + 1) % allCounterNames.length;
-                    setTimeout(showActiveCounter, 100); // Try again soon
-                    return;
-                }
-
-                // Hide the main title, timestamp, and regular counter container
-                mainTitle.classList.add('hidden');
-                timestampElement.classList.add('hidden');
-                counterContainer.classList.add('hidden');
-
-
-                // Create/Update and show the active full-screen card
-                const activeCard = createFullScreenCard(activeCounterName, currentFullData[activeCounterName]);
-                activeCard.style.display = 'flex'; // Make sure it's visible before activating
-                setTimeout(() => { // Add active class after display to trigger transition
-                    activeCard.classList.add('active');
-                }, 50);
-
-                // Re-start the rotation timer
-                if (rotationTimer) {
-                    clearInterval(rotationTimer);
-                }
-                rotationTimer = setInterval(() => {
-                    currentCounterIndex = (currentCounterIndex + 1) % allCounterNames.length;
-                    showActiveCounter();
-                }, rotationIntervalTime);
             }
 
-            // --- End Logic for Counter Rotation ---
-
-            // Initialize the counter cards and set up the rotation
-            function initializeCounters(data) {
-                counterContainer.innerHTML = ''; // Clear initial loading message
-                allCounterNames = []; // Clear previous names
-                for (const [key, value] of Object.entries(data)) {
-                    if (key === 'timestamp' || key === 'message') continue;
-                    
-                    allCounterNames.push(key); // Store order of counter names
-
-                    // We still create these, but they are hidden by CSS display:none
-                    let cardHtml = `
-                        <div class="col-md-6 col-lg-4">
-                            <div class="counter-card" id="card-${key.replace(/\s+/g, '-').toLowerCase()}">
-                                <div class="counter-value text-center" id="value-${key.replace(/\s+/g, '-').toLowerCase()}">${value}</div>
-                                <div class="counter-title text-center">${key}</div>
-                            </div>
-                        </div>
-                    `;
-                    counterContainer.innerHTML += cardHtml;
-                }
-                previousData = {...data};
-                currentFullData = {...data}; // Store initial full data
-                globalBlackOverlay.style.display = 'none'; // Hide initial black overlay once data loads
-
-                // Start the rotation once counters are initialized
-                if (allCounterNames.length > 0) {
-                    showActiveCounter();
-                } else {
-                    console.warn("No counter names found in initial data. Check Flask app output.");
-                }
-            }
-            
-            // Update counter values (both currentFullData and conditionally trigger flash)
-            function updateCounters(data) {
-                // Update the current full data storage with the latest interpolated values
-                currentFullData = {...data};
-
-                // Define colors for specific counters (for the flash effect)
-                const counterColors = {
-                    "Current World Population": "#eb7781",
-                    "Births this year": "#d67821",
-                    "Deaths this year": "#55abfc",
-                    "Births today": "#d67821", 
-                    "Deaths today": "#55abfc", 
-                    "Net population growth this year": "#0d6efd", 
-                    "Net population growth today": "#0d6efd" 
+            setupEventSource() {
+                this.eventSource = new EventSource('/stream');
+                
+                this.eventSource.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        this.updateData(data);
+                    } catch (error) {
+                        console.error('Error parsing data:', error);
+                    }
                 };
 
-                const activeCounterName = allCounterNames[currentCounterIndex];
+                this.eventSource.onerror = (error) => {
+                    console.error('EventSource error:', error);
+                    if (this.debugInfo) {
+                        this.debugInfo.textContent = 'Connection error';
+                    }
+                };
+            }
 
-                for (const [key, value] of Object.entries(data)) {
-                    if (key === 'timestamp' || key === 'message') {
-                        if (key === 'timestamp') {
-                            // Update timestamp (this might be hidden in full-screen mode)
-                            timestampElement.textContent = `Last Updated: ${value}`;
+            updateData(data) {
+                this.streams.forEach((stream, index) => {
+                    if (data[stream.key] !== undefined) {
+                        const newValue = data[stream.key];
+                        if (newValue !== stream.value && stream.value !== 0) {
+                            if (this.isStreamVisible(index)) {
+                                this.triggerFlash(index, stream.color);
+                                this.playSound(stream.audio);
+                            }
                         }
-                        continue;
+                        stream.lastValue = stream.value;
+                        stream.value = newValue;
+                    }
+                });
+
+                this.updateDisplay();
+                if (this.debugInfo) {
+                    this.debugInfo.textContent = `Data updated: ${data.timestamp || 'Unknown time'}`;
+                }
+            }
+
+            isStreamVisible(streamIndex) {
+                const currentSequence = this.sequence[this.currentSequenceIndex];
+                return currentSequence.streams.includes(streamIndex);
+            }
+
+            triggerFlash(streamIndex, color) {
+                const boxes = this.container.querySelectorAll('.stream-box');
+                const currentSequence = this.sequence[this.currentSequenceIndex];
+                
+                boxes.forEach((box, boxIndex) => {
+                    const displayedStreamIndex = currentSequence.streams[boxIndex];
+                    if (displayedStreamIndex === streamIndex) {
+                        const flashDiv = box.querySelector('.stream-flash');
+                        if (flashDiv) {
+                            flashDiv.style.backgroundColor = color;
+                            flashDiv.style.opacity = '1';
+                            setTimeout(() => {
+                                flashDiv.style.opacity = '0';
+                            }, 150);
+                        }
+                    }
+                });
+            }
+
+            playSound(audioFile) {
+                if (this.audioCache[audioFile]) {
+                    const audioClone = this.audioCache[audioFile].cloneNode();
+                    audioClone.volume = 0.5;
+                    audioClone.play().catch(error => {
+                        console.error('Error playing sound:', error);
+                    });
+                }
+            }
+
+            formatNumber(num) {
+                return num.toLocaleString();
+            }
+
+            createStreamBox(streamIndex) {
+                const stream = this.streams[streamIndex];
+                const box = document.createElement('div');
+                box.className = 'stream-box';
+                box.style.borderColor = stream.color;
+                
+                // Add flash overlay for this box
+                const flash = document.createElement('div');
+                flash.className = 'stream-flash';
+                box.appendChild(flash);
+                
+                const title = document.createElement('div');
+                title.className = 'stream-title';
+                title.textContent = stream.name;
+                
+                const value = document.createElement('div');
+                value.className = 'stream-value';
+                value.textContent = this.formatNumber(stream.value);
+                
+                box.appendChild(title);
+                box.appendChild(value);
+                
+                return box;
+            }
+
+            updateDisplay() {
+                if (!this.container) return;
+
+                const boxes = this.container.querySelectorAll('.stream-box');
+                boxes.forEach((box, index) => {
+                    const valueElement = box.querySelector('.stream-value');
+                    const currentSequence = this.sequence[this.currentSequenceIndex];
+                    const streamIndex = currentSequence.streams[index];
+                    if (streamIndex !== undefined && valueElement && this.streams[streamIndex]) {
+                        valueElement.textContent = this.formatNumber(this.streams[streamIndex].value);
+                    }
+                });
+            }
+
+            setupLayout(type, streamIndices) {
+                this.container.innerHTML = '';
+                this.container.className = `container ${type}`;
+                
+                streamIndices.forEach(streamIndex => {
+                    const box = this.createStreamBox(streamIndex);
+                    this.container.appendChild(box);
+                });
+            }
+
+            startSequence() {
+                this.runCurrentSequence();
+            }
+
+            runCurrentSequence() {
+                const currentSequence = this.sequence[this.currentSequenceIndex];
+                
+                if (currentSequence.type === 'mosaic-3x3-random') {
+                    this.runRandomMosaic(currentSequence);
+                } else if (currentSequence.type === 'random-cycle') {
+                    this.runRandomCycle(currentSequence);
+                } else {
+                    this.setupLayout(currentSequence.type, currentSequence.streams);
+                    
+                    setTimeout(() => {
+                        this.nextSequence();
+                    }, currentSequence.duration);
+                }
+            }
+
+            runRandomMosaic(sequence) {
+                const startTime = Date.now();
+                const changeInterval = 200; // Change every 0.2 second
+                
+                const randomChange = () => {
+                    if (Date.now() - startTime >= sequence.duration) {
+                        this.nextSequence();
+                        return;
                     }
                     
-                    // Check if the value for this counter has changed
-                    if (previousData[key] !== value) {
-                        // If this counter is currently active (displayed full-screen)
-                        if (key === activeCounterName) {
-                            // Update the value in the active full-screen card
-                            const fullScreenElement = document.getElementById(`full-screen-card-${key.replace(/\s+/g, '-').toLowerCase()}`);
-                            if (fullScreenElement) {
-                                fullScreenElement.querySelector('.counter-value').textContent = value;
-                            }
-
-                            // Trigger the visual flash feedback ONLY for the active counter
-                            if (counterColors[key]) {
-                                showFlashFeedback(key, counterColors[key], value);
-                            }
-                        }
-                    }
-                }
-                previousData = {...data}; // Update previous data for the next comparison
-            }
-            
-            // Handle incoming events
-            eventSource.onmessage = function(event) {
-                const data = JSON.parse(event.data);
+                    const shuffledStreams = [...sequence.streams].sort(() => Math.random() - 0.5);
+                    this.setupLayout('mosaic-3x3', shuffledStreams);
+                    
+                    setTimeout(randomChange, changeInterval);
+                };
                 
-                // Initialize counters if this is the first data we received
-                if (Object.keys(previousData).length === 0) {
-                    initializeCounters(data);
-                } else {
-                    updateCounters(data);
-                }
-            };
-            
-            // Handle errors
-            eventSource.onerror = function() {
-                console.error('EventSource failed. Trying to reconnect...');
-                eventSource.close();
-                setTimeout(() => {
-                    location.reload();
-                }, 5000);
-            };
+                randomChange();
+            }
 
-            // Initially show the global black overlay
-            globalBlackOverlay.style.display = 'block';
+            runRandomCycle(sequence) {
+                const startTime = Date.now();
+                const changeInterval = 500; // Change every 0.5 seconds
+                
+                const randomChange = () => {
+                    if (Date.now() - startTime >= sequence.duration) {
+                        this.nextSequence();
+                        return;
+                    }
+                    
+                    const layouts = ['single', 'side-by-side', 'mosaic-2x2', 'mosaic-3x3'];
+                    const randomLayout = layouts[Math.floor(Math.random() * layouts.length)];
+                    
+                    let streamCount;
+                    switch (randomLayout) {
+                        case 'single': streamCount = 1; break;
+                        case 'side-by-side': streamCount = 2; break;
+                        case 'mosaic-2x2': streamCount = 4; break;
+                        case 'mosaic-3x3': streamCount = 9; break;
+                    }
+                    
+                    const randomStreams = [];
+                    for (let i = 0; i < streamCount; i++) {
+                        const randomIndex = Math.floor(Math.random() * sequence.streams.length);
+                        randomStreams.push(sequence.streams[randomIndex]);
+                    }
+                    
+                    this.setupLayout(randomLayout, randomStreams);
+                    
+                    setTimeout(randomChange, changeInterval);
+                };
+                
+                randomChange();
+            }
+
+            nextSequence() {
+                this.currentSequenceIndex = (this.currentSequenceIndex + 1) % this.sequence.length;
+                this.runCurrentSequence();
+            }
+        }
+
+        // Initialize the display when the page loads
+        window.addEventListener('load', () => {
+            new WorldometersDisplay();
         });
+
+        // Handle click to enable audio (browsers require user interaction for audio)
+        document.addEventListener('click', () => {
+            console.log('Audio enabled by user interaction');
+        }, { once: true });
     </script>
 </body>
 </html>
