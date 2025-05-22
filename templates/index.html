@@ -5,6 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Worldometers Live Display</title>
     <style>
+        @font-face {
+            font-family: 'Melodrama-Regular';
+            src: url('../static/font/Melodrama_Complete/WEB/fonts/Melodrama-Regular.woff2') format('woff2'),
+                 url('../static/font/Melodrama_Complete/WEB/fonts/Melodrama-Regular.woff') format('woff'),
+                 url('../static/font/Melodrama_Complete/WEB/fonts/Melodrama-Regular.ttf') format('truetype');
+            font-weight: 400;
+            font-display: swap;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'Melodrama-Bold';
+            src: url('../static/font/Melodrama_Complete/WEB/fonts/Melodrama-Bold.woff2') format('woff2'),
+                 url('../static/font/Melodrama_Complete/WEB/fonts/Melodrama-Bold.woff') format('woff'),
+                 url('../static/font/Melodrama_Complete/WEB/fonts/Melodrama-Bold.ttf') format('truetype');
+            font-weight: 700;
+            font-display: swap;
+            font-style: normal;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -14,7 +34,7 @@
         body {
             background-color: black;
             color: white;
-            font-family: 'Courier New', monospace;
+            font-family: 'Melodrama-Regular', 'Courier New', monospace;
             overflow: hidden;
             height: 100vh;
             display: flex;
@@ -40,7 +60,7 @@
         }
 
         .stream-title {
-            font-size: 1.5rem;
+            font-size: 1.8rem;
             font-weight: bold;
             text-align: center;
             margin-bottom: 20px;
@@ -50,11 +70,12 @@
         }
 
         .stream-value {
-            font-size: 3rem;
+            font-size: 2.5rem;
             font-weight: bold;
             text-align: center;
-            font-family: 'Courier New', monospace;
+            font-family: monospace;
             color: white;
+            letter-spacing: -2px;
         }
 
         .stream-flash {
@@ -116,8 +137,9 @@
         }
 
         .intro-title {
-            font-size: 4rem;
-            font-weight: bold;
+            font-family: 'Melodrama-Bold', 'Courier New', monospace;
+            font-size: 4.6rem;
+            font-weight: 900;
             margin-bottom: 30px;
             text-transform: uppercase;
             letter-spacing: 4px;
@@ -125,16 +147,18 @@
         }
 
         .intro-subtitle {
-            font-size: 1.8rem;
+            font-size: 2.5rem;
             margin-bottom: 20px;
             opacity: 0.8;
             animation: fadeIn 2s ease-in 0.5s both;
         }
 
         .intro-description {
-            font-size: 1.2rem;
+            font-size: 1.6rem;
             max-width: 800px;
             line-height: 1.6;
+            font-weight: 600;
+            letter-spacing: 2px;
             opacity: 0.7;
             animation: fadeIn 2s ease-in 1s both;
         }
@@ -176,7 +200,7 @@
                 this.streams = [
                     { 
                         key: 'Current World Population', 
-                        name: 'POPULATION', 
+                        name: 'Current World Population', 
                         color: '#FF0000',
                         audio: '/static/audio/population.mp3',
                         value: 0,
@@ -184,7 +208,7 @@
                     },
                     { 
                         key: 'Births this year', 
-                        name: 'BIRTHS', 
+                        name: 'Births this year', 
                         color: '#00FF00',
                         audio: '/static/audio/births.mp3',
                         value: 0,
@@ -192,7 +216,7 @@
                     },
                     { 
                         key: 'Deaths this year', 
-                        name: 'DEATHS', 
+                        name: 'Deaths this year', 
                         color: '#0000FF',
                         audio: '/static/audio/deaths.mp3',
                         value: 0,
@@ -200,7 +224,7 @@
                     },
                     { 
                         key: 'Car Production this year', 
-                        name: 'CARS', 
+                        name: 'Car Production this year', 
                         color: '#FFFF00',
                         audio: '/static/audio/cars.mp3',
                         value: 0,
@@ -208,7 +232,7 @@
                     },
                     { 
                         key: 'Cellular phones sold today', 
-                        name: 'PHONES', 
+                        name: 'Cellular phones sold today', 
                         color: '#FF00FF',
                         audio: '/static/audio/phones.mp3',
                         value: 0,
@@ -216,7 +240,7 @@
                     },
                     { 
                         key: 'Google searches today', 
-                        name: 'SEARCHES', 
+                        name: 'Google searches today', 
                         color: '#00FFFF',
                         audio: '/static/audio/searches.mp3',
                         value: 0,
@@ -224,7 +248,7 @@
                     },
                     { 
                         key: 'CO2 emissions this year (tons)', 
-                        name: 'CO2', 
+                        name: 'CO2 emissions this year (tons)', 
                         color: '#FFA500',
                         audio: '/static/audio/co2.mp3',
                         value: 0,
@@ -232,7 +256,7 @@
                     },
                     { 
                         key: 'Water used this year (million L)', 
-                        name: 'WATER', 
+                        name: 'Water used this year (million L)', 
                         color: '#800080',
                         audio: '/static/audio/water.mp3',
                         value: 0,
@@ -240,7 +264,7 @@
                     },
                     { 
                         key: 'Cigarettes smoked today', 
-                        name: 'CIGARETTES', 
+                        name: 'Cigarettes smoked today', 
                         color: '#A52A2A',
                         audio: '/static/audio/cigarettes.mp3',
                         value: 0,
@@ -249,7 +273,7 @@
                 ];
 
                 this.sequence = [
-                    { type: 'intro-screen', streams: [], duration: 5000 },
+                    { type: 'intro-screen', streams: [], duration: 8000 },
                     { type: 'single', streams: [0], duration: 10000 },
                     { type: 'single', streams: [1], duration: 10000 },
                     { type: 'single', streams: [2], duration: 10000 },
@@ -387,9 +411,10 @@
                 if (this.audioCache[audioFile]) {
                     const audioClone = this.audioCache[audioFile].cloneNode();
                     audioClone.volume = 0.5;
-                    if (audioFile === '/static/audio/finale.mp3') {
+                    if (audioFile === this.finaleAudio || audioFile === this.startAudio) {
                         audioClone.volume = 1;
                     }
+
                     audioClone.play().catch(error => {
                         console.error('Error playing sound:', error);
                     });
@@ -481,15 +506,15 @@
                 
                 const title = document.createElement('div');
                 title.className = 'intro-title';
-                title.textContent = 'Worldometers Live';
+                title.textContent = 'Data Saturation';
                 
                 const subtitle = document.createElement('div');
                 subtitle.className = 'intro-subtitle';
-                subtitle.textContent = 'Real-time Global Statistics Display';
+                subtitle.textContent = 'Real-time Projections';
                 
                 const description = document.createElement('div');
                 description.className = 'intro-description';
-                description.textContent = 'Experience the pulse of our planet through live data streams showing population changes, environmental impact, technological consumption, and human activity happening right now around the world.';
+                description.textContent = 'Voici le rythme du monde qui déborde, noyé sous ses propres données, saturé jusqu\'à l\'oubli.';
                 
                 introDiv.appendChild(title);
                 introDiv.appendChild(subtitle);
@@ -498,7 +523,7 @@
                 
                 setTimeout(() => {
                     this.playSound(this.startAudio);
-                }, 300);
+                }, 750);
                 
                 setTimeout(() => {
                     introDiv.classList.add('fade-out');
