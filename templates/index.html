@@ -101,6 +101,69 @@
             border-radius: 5px;
             z-index: 999;
         }
+
+        .intro-screen {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            width: 100vw;
+            background-color: black;
+            color: white;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .intro-title {
+            font-size: 4rem;
+            font-weight: bold;
+            margin-bottom: 30px;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            animation: fadeIn 2s ease-in;
+        }
+
+        .intro-subtitle {
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            opacity: 0.8;
+            animation: fadeIn 2s ease-in 0.5s both;
+        }
+
+        .intro-description {
+            font-size: 1.2rem;
+            max-width: 800px;
+            line-height: 1.6;
+            opacity: 0.7;
+            animation: fadeIn 2s ease-in 1s both;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeOut {
+            from {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+        }
+
+        .intro-screen.fade-out {
+            animation: fadeOut 1s ease-out forwards;
+        }
     </style>
 </head>
 <body>
@@ -186,6 +249,7 @@
                 ];
 
                 this.sequence = [
+                    { type: 'intro-screen', streams: [], duration: 5000 },
                     { type: 'single', streams: [0], duration: 10000 },
                     { type: 'single', streams: [1], duration: 10000 },
                     { type: 'single', streams: [2], duration: 10000 },
@@ -200,8 +264,9 @@
                     { type: 'mosaic-2x2', streams: [0, 1, 2, 3], duration: 7000 },
                     { type: 'mosaic-2x2', streams: [4, 5, 6, 7], duration: 7000 },
                     { type: 'mosaic-3x3', streams: [0, 1, 2, 3, 4, 5, 6, 7, 8], duration: 10000 },
-                    { type: 'mosaic-3x3-random', streams: [0, 1, 2, 3, 4, 5, 6, 7, 8], duration: 10000 },
-                    { type: 'random-cycle', streams: [0, 1, 2, 3, 4, 5, 6, 7, 8], duration: 20000 }
+                    { type: 'mosaic-3x3-random', streams: [0, 1, 2, 3, 4, 5, 6, 7, 8], duration: 7000 },
+                    { type: 'random-cycle', streams: [0, 1, 2, 3, 4, 5, 6, 7, 8], duration: 15000 },
+                    { type: 'finale-flash', streams: [0, 1, 2, 3, 4, 5, 6, 7, 8], duration: 2000 }
                 ];
 
                 this.currentSequenceIndex = 0;
@@ -210,12 +275,22 @@
                 this.debugInfo = document.getElementById('debugInfo');
                 
                 this.audioCache = {};
+                this.startAudio = '/static/audio/start.mp3';
+                this.finaleAudio = '/static/audio/finale.mp3';
                 this.loadAudio();
                 this.setupEventSource();
                 this.startSequence();
             }
 
             loadAudio() {
+                this.audioCache[this.startAudio] = new Audio(this.startAudio);
+                this.audioCache[this.startAudio].volume = 1;
+                this.audioCache[this.startAudio].preload = 'auto';
+
+                this.audioCache[this.finaleAudio] = new Audio(this.finaleAudio);
+                this.audioCache[this.finaleAudio].volume = 0.7;
+                this.audioCache[this.finaleAudio].preload = 'auto';
+
                 this.streams.forEach(stream => {
                     this.audioCache[stream.audio] = new Audio(stream.audio);
                     this.audioCache[stream.audio].volume = 0.5;
@@ -288,10 +363,33 @@
                 });
             }
 
+            triggerAllFlash() {
+                const boxes = this.container.querySelectorAll('.stream-box');
+                const currentSequence = this.sequence[this.currentSequenceIndex];
+                
+                boxes.forEach((box, boxIndex) => {
+                    const streamIndex = currentSequence.streams[boxIndex];
+                    if (streamIndex !== undefined) {
+                        const stream = this.streams[streamIndex];
+                        const flashDiv = box.querySelector('.stream-flash');
+                        if (flashDiv) {
+                            flashDiv.style.backgroundColor = stream.color;
+                            flashDiv.style.opacity = '1';
+                            setTimeout(() => {
+                                flashDiv.style.opacity = '0';
+                            }, 50);
+                        }
+                    }
+                });
+            }
+
             playSound(audioFile) {
                 if (this.audioCache[audioFile]) {
                     const audioClone = this.audioCache[audioFile].cloneNode();
                     audioClone.volume = 0.5;
+                    if (audioFile === '/static/audio/finale.mp3') {
+                        audioClone.volume = 1;
+                    }
                     audioClone.play().catch(error => {
                         console.error('Error playing sound:', error);
                     });
@@ -308,7 +406,6 @@
                 box.className = 'stream-box';
                 box.style.borderColor = stream.color;
                 
-                // Add flash overlay for this box
                 const flash = document.createElement('div');
                 flash.className = 'stream-flash';
                 box.appendChild(flash);
@@ -358,10 +455,14 @@
             runCurrentSequence() {
                 const currentSequence = this.sequence[this.currentSequenceIndex];
                 
-                if (currentSequence.type === 'mosaic-3x3-random') {
+                if (currentSequence.type === 'intro-screen') {
+                    this.runIntroScreen(currentSequence);
+                } else if (currentSequence.type === 'mosaic-3x3-random') {
                     this.runRandomMosaic(currentSequence);
                 } else if (currentSequence.type === 'random-cycle') {
                     this.runRandomCycle(currentSequence);
+                } else if (currentSequence.type === 'finale-flash') {
+                    this.runFinaleFlash(currentSequence);
                 } else {
                     this.setupLayout(currentSequence.type, currentSequence.streams);
                     
@@ -371,9 +472,71 @@
                 }
             }
 
+            runIntroScreen(sequence) {
+                this.container.innerHTML = '';
+                this.container.className = 'container';
+                
+                const introDiv = document.createElement('div');
+                introDiv.className = 'intro-screen';
+                
+                const title = document.createElement('div');
+                title.className = 'intro-title';
+                title.textContent = 'Worldometers Live';
+                
+                const subtitle = document.createElement('div');
+                subtitle.className = 'intro-subtitle';
+                subtitle.textContent = 'Real-time Global Statistics Display';
+                
+                const description = document.createElement('div');
+                description.className = 'intro-description';
+                description.textContent = 'Experience the pulse of our planet through live data streams showing population changes, environmental impact, technological consumption, and human activity happening right now around the world.';
+                
+                introDiv.appendChild(title);
+                introDiv.appendChild(subtitle);
+                introDiv.appendChild(description);
+                this.container.appendChild(introDiv);
+                
+                setTimeout(() => {
+                    this.playSound(this.startAudio);
+                }, 300);
+                
+                setTimeout(() => {
+                    introDiv.classList.add('fade-out');
+                }, sequence.duration - 1000);
+                
+                setTimeout(() => {
+                    this.nextSequence();
+                }, sequence.duration);
+            }
+            runFinaleFlash(sequence) {
+                this.setupLayout('mosaic-3x3', sequence.streams);
+                
+                this.playSound(this.finaleAudio);
+                
+                const startTime = Date.now();
+                const flashInterval = 100;
+                
+                const flashLoop = () => {
+                    if (Date.now() - startTime >= sequence.duration) {
+                        this.nextSequence();
+                        return;
+                    }
+                    
+                    this.triggerAllFlash();
+                    
+                    this.streams.forEach(stream => {
+                        this.playSound(stream.audio);
+                    });
+                    
+                    setTimeout(flashLoop, flashInterval);
+                };
+                
+                setTimeout(flashLoop, flashInterval);
+            }
+
             runRandomMosaic(sequence) {
                 const startTime = Date.now();
-                const changeInterval = 200; // Change every 0.2 second
+                const changeInterval = 200;
                 
                 const randomChange = () => {
                     if (Date.now() - startTime >= sequence.duration) {
@@ -392,7 +555,7 @@
 
             runRandomCycle(sequence) {
                 const startTime = Date.now();
-                const changeInterval = 500; // Change every 0.5 seconds
+                const changeInterval = 200;
                 
                 const randomChange = () => {
                     if (Date.now() - startTime >= sequence.duration) {
@@ -431,12 +594,10 @@
             }
         }
 
-        // Initialize the display when the page loads
         window.addEventListener('load', () => {
             new WorldometersDisplay();
         });
 
-        // Handle click to enable audio (browsers require user interaction for audio)
         document.addEventListener('click', () => {
             console.log('Audio enabled by user interaction');
         }, { once: true });
